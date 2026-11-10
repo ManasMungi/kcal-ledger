@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Log daily calories eaten and burnt, pick Indian meals, and see your weekly deficit and expected weight loss by Sunday.">
+<style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Kcal Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: one narrow column — log form (quick total / pick foods), weekly verdict, day-by-day ledger, burn settings */
+:root{
+  --bg:#eef2f1; --surface:#ffffff; --fg:#14211f; --muted:#5d6d6a; --line:#d5dedc;
+  --accent:#0f7a63; --accent-soft:#d6efe8; --surplus:#c4513a; --surplus-soft:#f7e0da;
+  --font-display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --font-body:"Manrope",ui-sans-serif,system-ui,sans-serif;
+  --font-num:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1716; --surface:#172221; --fg:#e6efed; --muted:#93a5a1; --line:#2a3a38;
+  --accent:#3fc6a2; --accent-soft:#163a31; --surplus:#ef8a72; --surplus-soft:#3d221c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1716; --surface:#172221; --fg:#e6efed; --muted:#93a5a1; --line:#2a3a38;
+  --accent:#3fc6a2; --accent-soft:#163a31; --surplus:#ef8a72; --surplus-soft:#3d221c; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.5}
+.wrap{max-width:720px;margin:0 auto;padding-block:28px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:22px}
+h1,h2{font-family:var(--font-display);margin:0;text-wrap:balance}
+h1{font-size:2rem;font-weight:800;letter-spacing:-.02em}
+h2{font-size:1.05rem;font-weight:600}
+.num{font-family:var(--font-num);font-variant-numeric:tabular-nums}
+.top{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:12px}
+.sub{color:var(--muted);margin:2px 0 0}
+.weeknav{display:flex;align-items:center;gap:6px}
+.weeknav span{min-width:150px;text-align:center;font-weight:600}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:8px 12px}
+button:hover{border-color:var(--accent)}
+button:disabled{opacity:.4;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.primary{background:var(--accent);border-color:var(--accent);color:var(--surface);font-weight:700}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;align-items:end}
+label{display:grid;gap:4px;font-size:.8rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+input,select{font:inherit;font-size:1rem;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%;box-sizing:border-box;min-width:0}
+.hint{font-size:.85rem;color:var(--muted);margin:10px 0 0}
+.hint.warn{color:var(--surplus)}
+.status{font-size:.85rem;color:var(--accent);min-height:1.2em;margin:6px 0 0}
+
+/* intake tabs */
+.block{display:grid;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.block-h{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.tabs{display:inline-flex;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:3px;gap:2px}
+.tabs button{border:0;background:transparent;padding:6px 12px;border-radius:7px;font-size:.88rem;font-weight:600;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.foods{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.food{display:grid;grid-template-columns:1fr auto;gap:2px 8px;align-items:center;border:1px solid var(--line);border-radius:9px;padding:8px 10px;background:var(--bg)}
+.food.on{border-color:var(--accent);background:var(--accent-soft)}
+.food b{font-weight:700;font-size:.92rem}
+.food small{grid-column:1;color:var(--muted);font-size:.76rem}
+.step{grid-row:1/3;grid-column:2;display:flex;align-items:center;gap:4px}
+.step button{width:28px;height:28px;padding:0;border-radius:7px;font-weight:700;line-height:1}
+.step span{min-width:22px;text-align:center;font-weight:600}
+.cat{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-top:4px}
+.other{display:grid;grid-template-columns:2fr 1fr auto;gap:8px;align-items:end}
+.picked{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:.8rem;padding:3px 4px 3px 10px;border-radius:99px;background:var(--accent-soft);color:var(--fg)}
+.chip button{border:0;background:transparent;padding:0 6px;color:var(--muted)}
+.total{display:flex;justify-content:space-between;align-items:baseline;font-weight:700;padding:8px 0 0;border-top:1px dashed var(--line)}
+.total .num{font-size:1.2rem;color:var(--accent)}
+.save-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px}
+
+.verdict{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:center}
+.big{font-family:var(--font-display);font-weight:800;font-size:3.2rem;line-height:1;letter-spacing:-.03em}
+.big small{font-size:1.2rem;font-weight:600;margin-left:4px}
+.big.loss{color:var(--accent)} .big.gain{color:var(--surplus)}
+.eyebrow{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700}
+.stats{display:grid;gap:10px}
+.stat{display:flex;justify-content:space-between;gap:10px;border-bottom:1px dashed var(--line);padding-bottom:6px}
+.stat:last-child{border-bottom:0}
+.stat span:first-child{color:var(--muted)}
+.ledger{display:grid;gap:2px}
+.row{display:grid;grid-template-columns:62px 1fr 92px 34px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.day{cursor:pointer}
+.day b{display:block;font-weight:700}
+.day small{color:var(--muted)}
+.bar{position:relative;height:22px;background:var(--bg);border-radius:4px;overflow:hidden}
+.bar::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line)}
+.bar i{position:absolute;top:3px;bottom:3px;border-radius:3px}
+.bar i.d{left:50%;background:var(--accent)} .bar i.s{right:50%;background:var(--surplus)}
+.bar em{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:.8rem;color:var(--muted)}
+.meta{font-size:.78rem;color:var(--muted)}
+.val{text-align:right;font-weight:600}
+.val.pos{color:var(--accent)} .val.neg{color:var(--surplus)}
+.del{padding:4px 0;width:30px;border-color:transparent;background:transparent;color:var(--muted)}
+.today .day b{color:var(--accent)}
+.legend{display:flex;gap:16px;font-size:.8rem;color:var(--muted);margin-top:8px;flex-wrap:wrap}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.legend .l1::before{background:var(--accent)} .legend .l2::before{background:var(--surplus)}
+.badge{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--accent-soft);color:var(--accent)}
+.badge.warn{background:var(--surplus-soft);color:var(--surplus)}
+.choice{display:grid;gap:8px;margin-top:12px}
+.opt{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:9px;padding:10px 12px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:.92rem;color:var(--fg);font-weight:500}
+.opt input{width:auto;margin-top:4px}
+.opt b{display:block}
+.opt span{color:var(--muted);font-size:.84rem}
+.opt:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.chartbox{grid-column:1/-1;min-width:0}
+.chart svg{display:block;width:100%;height:auto}
+.chart text{font-family:var(--font-num);font-size:11px;fill:var(--muted)}
+.legend .lk1::before{background:var(--accent)}
+.legend .lk2::before{background:transparent;border:2px dashed var(--accent);box-sizing:border-box}
+.views{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.views a{text-decoration:none;font-weight:700;padding:8px 14px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--fg)}
+.views a[aria-current="page"]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.views .status{margin:0 0 0 4px}
+.wrow{display:grid;grid-template-columns:1fr auto auto 34px;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.wrow:last-child{border-bottom:0}
+.wrow .chg{font-size:.85rem;color:var(--muted);min-width:64px;text-align:right}
+.back{color:var(--accent);font-weight:600;text-decoration:none;font-size:.9rem}
+details.calc{margin-top:12px;border:1px dashed var(--line);border-radius:9px;padding:10px 12px}
+details.calc summary{cursor:pointer;font-weight:600}
+@media (max-width:520px){.verdict{grid-template-columns:1fr}.big{font-size:2.6rem}.row{grid-template-columns:52px 1fr 78px 30px}.other{grid-template-columns:1fr 1fr}.other button{grid-column:1/-1}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Kcal Ledger</h1>
+      <p class="sub">Log what you eat and burn. See where the week lands on the scale.</p>
+    </div>
+    <div class="weeknav" id="weekNav">
+      <button id="prev" aria-label="Previous week">‹</button>
+      <span id="weekLabel">This week</span>
+      <button id="next" aria-label="Next week">›</button>
+    </div>
+  </header>
+
+  <nav class="views" aria-label="Pages">
+    <a href="#week" id="navWeek">My week</a>
+    <a href="#log" id="navLog">+ Log a day</a>
+    <a href="#profile" id="navProf">Weight &amp; settings</a>
+    <p class="status" id="status" aria-live="polite"></p>
+  </nav>
+
+  <section class="panel verdict" aria-labelledby="vH" data-view="week">
+    <div>
+      <div class="eyebrow" id="vH">Expected change by Sunday</div>
+      <div class="big num" id="projKg">–</div>
+      <p class="hint" id="projNote" style="margin-top:8px"></p>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>Deficit so far</span><span class="num" id="sDef">–</span></div>
+      <div class="stat"><span>Lost so far</span><span class="num" id="sKg">–</span></div>
+      <div class="stat"><span>Avg daily deficit</span><span class="num" id="sAvg">–</span></div>
+      <div class="stat"><span>Days logged</span><span class="num" id="sDays">–</span></div>
+      <div class="stat"><span>Weight by Sunday</span><span class="num" id="sW">–</span></div>
+    </div>
+    <div class="chartbox">
+      <div class="chart" id="chart" role="img" aria-label="Weight change through the week"></div>
+      <div class="legend"><span class="lk1">Logged days</span><span class="lk2">Estimated (your average)</span></div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="logH" data-view="log" hidden>
+    <div class="block-h"><h2 id="logH">Log a day</h2><a href="#week" class="back">← Back to my week</a></div>
+    <form id="logForm">
+      <div class="grid2" style="margin-top:12px">
+        <label for="fDate">Date<input type="date" id="fDate" required></label>
+        <label for="fOut"><span id="outLabel">Burnt (kcal)</span><input type="number" id="fOut" min="0" step="1" inputmode="numeric" placeholder="e.g. 350" required></label>
+      </div>
+      <p class="hint" id="burnHint"></p>
+
+      <div class="block">
+        <div class="block-h">
+          <h2>Intake</h2>
+          <div class="tabs" role="tablist" aria-label="How to enter intake">
+            <button type="button" role="tab" id="tabFoods" aria-selected="true" aria-controls="paneFoods">Pick foods</button>
+            <button type="button" role="tab" id="tabQuick" aria-selected="false" aria-controls="paneQuick">Enter total</button>
+          </div>
+        </div>
+
+        <div id="paneFoods" role="tabpanel" aria-labelledby="tabFoods" style="display:grid;gap:10px">
+          <div id="foodGrid"></div>
+          <div class="cat">Other</div>
+          <div class="other">
+            <label for="oName">Food<input type="text" id="oName" placeholder="e.g. Samosa"></label>
+            <label for="oKcal">kcal<input type="number" id="oKcal" min="0" step="1" inputmode="numeric" placeholder="250"></label>
+            <button type="button" id="oAdd">Add</button>
+          </div>
+          <div class="picked" id="picked"></div>
+          <div class="total"><span>Total intake</span><span class="num" id="foodTotal">0 kcal</span></div>
+          <p class="hint" style="margin:0">Calories are typical home-cooked portions (1 katori ≈ 150 ml). Oil and ghee change them a lot; use Other for anything that differs.</p>
+        </div>
+
+        <div id="paneQuick" role="tabpanel" aria-labelledby="tabQuick" hidden>
+          <label for="fIn">Total intake (kcal)<input type="number" id="fIn" min="0" step="1" inputmode="numeric" placeholder="e.g. 1800"></label>
+        </div>
+      </div>
+
+      <div class="save-row">
+        <button class="primary" type="submit">Save day</button>
+        <button type="button" id="clearForm">Clear</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel" aria-labelledby="dH" data-view="week">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h2 id="dH">Day by day</h2>
+      <span id="saveMode" class="badge"></span>
+    </div>
+    <div class="ledger" id="ledger" style="margin-top:8px"></div>
+    <div class="legend"><span class="l1">Deficit (burnt more than eaten)</span><span class="l2">Surplus</span></div>
+    <p class="hint">Tap a day to load it into the form and edit it.</p>
+  </section>
+
+  <section class="panel" aria-labelledby="wH" data-view="profile" hidden>
+    <h2 id="wH">Current weight</h2>
+    <form id="wForm" class="grid2" style="margin-top:12px">
+      <label for="wDate">Date<input type="date" id="wDate" required></label>
+      <label for="wKg">Weight (kg)<input type="number" id="wKg" min="20" max="400" step="0.1" inputmode="decimal" placeholder="e.g. 78.4" required></label>
+      <button class="primary" type="submit">Save weight</button>
+    </form>
+    <p class="hint" id="wSummary"></p>
+    <div class="ledger" id="wList" style="margin-top:6px"></div>
+    <p class="hint">Weigh yourself at the same time of day, ideally in the morning. Daily weight can swing by 0.5–1 kg from water alone, so watch the trend.</p>
+  </section>
+
+  <section class="panel" aria-labelledby="sH" data-view="profile" hidden>
+    <h2 id="sH">What does your "burnt" number include?</h2>
+    <div class="choice" role="radiogroup">
+      <label class="opt" for="mEx"><input type="radio" name="mode" id="mEx" value="exercise">
+        <div><b>Only exercise / activity</b><span>Workout, walk or "active calories" from your phone or watch. Your resting burn below is added every day.</span></div></label>
+      <label class="opt" for="mTot"><input type="radio" name="mode" id="mTot" value="total">
+        <div><b>Total for the day (resting + activity)</b><span>A watch or app's "total calories" figure. Nothing is added.</span></div></label>
+    </div>
+    <div id="restBox">
+      <div class="grid2" style="margin-top:12px">
+        <label for="fBmr">Resting burn per day (kcal)<input type="number" id="fBmr" min="0" step="1" placeholder="e.g. 1800"></label>
+        <label for="fKpk">Calories per kg of fat<input type="number" id="fKpk" min="1000" step="100" placeholder="7700"></label>
+      </div>
+      <details class="calc">
+        <summary>Don't know your resting burn? Estimate it</summary>
+        <div class="grid2" style="margin-top:10px">
+          <label for="cW">Weight (kg)<input type="number" id="cW" min="20" step="0.1"></label>
+          <label for="cH">Height (cm)<input type="number" id="cH" min="100" step="1"></label>
+          <label for="cA">Age<input type="number" id="cA" min="10" step="1"></label>
+          <label for="cS">Sex<select id="cS"><option value="m">Male</option><option value="f">Female</option></select></label>
+        </div>
+        <div class="save-row" style="margin-top:10px"><button type="button" id="cGo">Calculate &amp; use</button><span class="hint" id="cOut" style="margin:0"></span></div>
+        <p class="hint">Uses the Mifflin-St Jeor formula × 1.2, which covers resting plus normal daily movement on a day with no workout.</p>
+      </details>
+    </div>
+    <p class="hint">1 kg of body fat is about 7,700 kcal.</p>
+  </section>
+</div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const DAYN = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+  const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const FOODS = [
+    ["Rotis & rice", [["Chapati / roti","1 medium",110],["Phulka","1 small",70],["Plain paratha","1",230],["Aloo paratha","1",300],["Steamed rice","1 katori",200],["Jeera rice / pulao","1 katori",250]]],
+    ["Dal & curries", [["Dal (toor / moong)","1 katori",150],["Dal fry / tadka","1 katori",190],["Rajma / chole","1 katori",230],["Sambar","1 katori",130],["Kadhi","1 katori",160]]],
+    ["Vegetables", [["Dry sabzi","1 katori",130],["Gravy sabzi","1 katori",180],["Paneer sabzi","1 katori",280],["Salad","1 plate",40]]],
+    ["Breakfast & snacks", [["Poha","1 plate",250],["Upma","1 plate",250],["Idli","1 piece",60],["Plain dosa","1",170],["Masala dosa","1",350],["Boiled egg","1",75],["Omelette","2 eggs",190]]],
+    ["Sides & drinks", [["Curd / dahi","1 katori",100],["Chaas","1 glass",40],["Tea with milk & sugar","1 cup",90],["Milk","1 glass",150],["Fruit","1 medium",80],["Chicken curry","1 katori",260]]]
+  ];
+  let days = {};            // "YYYY-MM-DD" -> {intake, burnt, items?}
+  let settings = {bmr:0, kpk:7700, mode:"exercise"};
+  let weekOffset = 0, col = null, tab = "foods";
+  let picked = {};          // name -> {kcal, qty}
+  let weights = {};         // "YYYY-MM-DD" -> kg
+  const LS = "deficit-week-v1";
+
+  const iso = d => d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  const fmt = n => Math.round(n).toLocaleString("en-IN");
+  const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  function monday(off){ const d=new Date(); d.setHours(0,0,0,0); const w=(d.getDay()+6)%7; d.setDate(d.getDate()-w+off*7); return d; }
+  function lsSave(){ try{ localStorage.setItem(LS, JSON.stringify({days,settings,weights})); }catch(e){} }
+  function lsLoad(){ try{ const v=JSON.parse(localStorage.getItem(LS)||"null"); if(v){ days=v.days||{}; weights=v.weights||{}; settings=Object.assign(settings,v.settings||{}); } }catch(e){} }
+  const restAdd = () => settings.mode==="total" ? 0 : (Number(settings.bmr)||0);
+  const deficit = e => (e.burnt + restAdd()) - e.intake;
+
+  /* ---------- food picker ---------- */
+  function renderFoods(){
+    let h="";
+    for(const [cat,items] of FOODS){
+      h+='<div class="cat">'+cat+'</div><div class="foods">';
+      for(const [name,unit,kcal] of items){
+        const q=picked[name]?picked[name].qty:0;
+        h+='<div class="food'+(q?' on':'')+'"><b>'+esc(name)+'</b><small>'+unit+' · '+kcal+' kcal</small>'+
+           '<div class="step"><button type="button" data-f="'+esc(name)+'" data-k="'+kcal+'" data-d="-1" aria-label="Remove one '+esc(name)+'"'+(q?'':' disabled')+'>−</button>'+
+           '<span class="num">'+q+'</span><button type="button" data-f="'+esc(name)+'" data-k="'+kcal+'" data-d="1" aria-label="Add one '+esc(name)+'">+</button></div></div>';
+      }
+      h+='</div>';
+    }
+    $("foodGrid").innerHTML=h;
+    const presetNames=new Set(FOODS.flatMap(c=>c[1].map(f=>f[0])));
+    let chips="";
+    for(const n in picked){ if(presetNames.has(n)) continue; const p=picked[n];
+      chips+='<span class="chip">'+esc(n)+(p.qty>1?' ×'+p.qty:'')+' · '+fmt(p.kcal*p.qty)+' kcal<button type="button" data-rm="'+esc(n)+'" aria-label="Remove '+esc(n)+'">✕</button></span>'; }
+    $("picked").innerHTML=chips;
+    $("foodTotal").textContent=fmt(foodTotal())+" kcal";
+  }
+  const foodTotal = () => Object.values(picked).reduce((s,p)=>s+p.kcal*p.qty,0);
+  $("foodGrid").addEventListener("click",ev=>{
+    const b=ev.target.closest("button[data-f]"); if(!b) return;
+    const n=b.dataset.f, k=Number(b.dataset.k), d=Number(b.dataset.d);
+    const q=(picked[n]?picked[n].qty:0)+d;
+    if(q<=0) delete picked[n]; else picked[n]={kcal:k,qty:q};
+    renderFoods();
+  });
+  $("picked").addEventListener("click",ev=>{ const b=ev.target.closest("button[data-rm]"); if(b){ delete picked[b.dataset.rm]; renderFoods(); }});
+  $("oAdd").addEventListener("click",()=>{
+    const n=$("oName").value.trim(), k=Number($("oKcal").value);
+    if(!n || !(k>0)){ status("Enter a food name and its calories.", true); return; }
+    picked[n]=picked[n]?{kcal:k,qty:picked[n].qty+1}:{kcal:k,qty:1};
+    $("oName").value=""; $("oKcal").value=""; renderFoods();
+  });
+
+  function setTab(t){
+    tab=t;
+    $("tabFoods").setAttribute("aria-selected",t==="foods"); $("tabQuick").setAttribute("aria-selected",t==="quick");
+    $("paneFoods").hidden=t!=="foods"; $("paneQuick").hidden=t!=="quick";
+    if(t==="quick" && !$("fIn").value && foodTotal()) $("fIn").value=foodTotal();
+  }
+  $("tabFoods").onclick=()=>setTab("foods");
+  $("tabQuick").onclick=()=>setTab("quick");
+
+  function loadIntoForm(k){
+    $("fDate").value=k;
+    const e=days[k];
+    picked={}; $("fIn").value=""; $("fOut").value="";
+    if(e){
+      $("fOut").value=e.burnt;
+      if(e.items && e.items.length){ e.items.forEach(it=>picked[it.name]={kcal:it.kcal,qty:it.qty}); setTab("foods"); }
+      else { $("fIn").value=e.intake; setTab("quick"); }
+    }
+    renderFoods();
+  }
+
+  /* ---------- week view ---------- */
+  function render(){
+    const start = monday(weekOffset), todayIso = iso(new Date());
+    const end = new Date(start); end.setDate(end.getDate()+6);
+    $("weekLabel").textContent = weekOffset===0 ? "This week" :
+      start.getDate()+" "+MON[start.getMonth()]+" – "+end.getDate()+" "+MON[end.getMonth()];
+    $("next").disabled = weekOffset>=0;
+    const kpk = Number(settings.kpk)||7700;
+    let sum=0, n=0, maxAbs=1, html="";
+    const list=[];
+    for(let i=0;i<7;i++){ const d=new Date(start); d.setDate(d.getDate()+i); const k=iso(d); const e=days[k];
+      const def = e ? deficit(e) : null; if(e){ sum+=def; n++; maxAbs=Math.max(maxAbs,Math.abs(def)); } list.push({d,k,e,def}); }
+    for(const r of list){
+      const w = r.e ? Math.min(50, Math.abs(r.def)/maxAbs*50) : 0;
+      html += '<div class="row'+(r.k===todayIso?' today':'')+'">'+
+        '<div class="day" data-edit="'+r.k+'" role="button" tabindex="0"><b>'+DAYN[(r.d.getDay()+6)%7]+'</b><small>'+r.d.getDate()+' '+MON[r.d.getMonth()]+'</small></div>'+
+        '<div><div class="bar">'+(r.e?'<i class="'+(r.def>=0?'d':'s')+'" style="width:'+w+'%"></i>':'<em>not logged</em>')+'</div>'+
+        (r.e?'<div class="meta num">ate '+fmt(r.e.intake)+' · burnt '+fmt(r.e.burnt+restAdd())+'</div>':'')+'</div>'+
+        '<div class="val num '+(r.e?(r.def>=0?'pos':'neg'):'')+'">'+(r.e?(r.def>=0?'−':'+')+fmt(Math.abs(r.def)):'–')+'</div>'+
+        (r.e?'<button class="del" data-k="'+r.k+'" aria-label="Delete '+r.k+'">✕</button>':'<button class="del" data-edit="'+r.k+'" aria-label="Log '+r.k+'">+</button>')+
+      '</div>';
+    }
+    $("ledger").innerHTML = html;
+    const avg = n ? sum/n : 0, projected = n ? (sum + avg*(7-n)) : 0, kg = projected/kpk, big=$("projKg");
+    if(!n){ big.className="big num"; big.innerHTML="–"; $("projNote").textContent="Log at least one day this week to see a projection."; }
+    else{
+      big.className = "big num "+(kg>=0?"loss":"gain");
+      big.innerHTML = (kg>=0?"−":"+")+Math.abs(kg).toFixed(2)+"<small>kg</small>";
+      $("projNote").textContent = n===7 ? "Based on all 7 logged days." :
+        "Based on "+n+" logged day"+(n>1?"s":"")+"; the other "+(7-n)+" assumed to match your average.";
+    }
+    $("sDef").textContent = n ? fmt(Math.abs(sum))+" kcal"+(sum<0?" surplus":"") : "–";
+    $("sKg").textContent = n ? Math.abs(sum/kpk).toFixed(2)+" kg"+(sum<0?" gained":"") : "–";
+    $("sAvg").textContent = n ? fmt(avg)+" kcal" : "–";
+    $("sDays").textContent = n+" / 7";
+    drawChart(list, avg, kpk, n);
+    // expected weight on Sunday: latest weigh-in up to Sunday, minus the deficit of the days after it
+    const wk = Object.keys(weights).filter(d=>d<=iso(end)).sort().pop();
+    if(wk && n){
+      let after=0; list.forEach(r=>{ if(r.k>wk) after += r.e ? r.def : avg; });
+      $("sW").textContent = (weights[wk]-after/kpk).toFixed(1)+" kg";
+    } else $("sW").textContent = wk ? weights[wk].toFixed(1)+" kg" : "add weight";
+    renderWeights();
+    // burn mode UI
+    const ex = settings.mode!=="total", bmr=Number(settings.bmr)||0;
+    $("mEx").checked=ex; $("mTot").checked=!ex;
+    $("outLabel").textContent = ex ? "Exercise burnt (kcal)" : "Total burnt (kcal)";
+    $("fOut").placeholder = ex ? "e.g. 350" : "e.g. 2300";
+    const hint=$("burnHint");
+    if(ex && !bmr){ hint.className="hint warn"; hint.textContent="Set your resting burn below, otherwise every day will look like a surplus."; }
+    else if(ex){ hint.className="hint"; hint.textContent="Your resting burn of "+fmt(bmr)+" kcal is added automatically. Enter only exercise here."; }
+    else { hint.className="hint"; hint.textContent="Enter the total calories your watch or app shows for the day."; }
+    $("saveMode").textContent = col ? "Saved to your account" : "Saved in this browser";
+    $("saveMode").className = "badge";
+  }
+
+  function renderWeights(){
+    const ks=Object.keys(weights).sort().reverse();
+    let h="";
+    ks.slice(0,10).forEach((k,i)=>{
+      const prev=ks[i+1], d=new Date(k+"T00:00:00"), diff=prev!==undefined?weights[k]-weights[prev]:null;
+      h+='<div class="wrow"><span>'+DAYN[(d.getDay()+6)%7]+' '+d.getDate()+' '+MON[d.getMonth()]+' '+d.getFullYear()+'</span>'+
+        '<span class="chg num" style="color:'+(diff===null?'':diff<=0?'var(--accent)':'var(--surplus)')+'">'+(diff===null?'':(diff>0?'+':'')+diff.toFixed(1))+'</span>'+
+        '<b class="num">'+weights[k].toFixed(1)+' kg</b><button class="del" data-w="'+k+'" aria-label="Delete weight for '+k+'">✕</button></div>';
+    });
+    $("wList").innerHTML = h || '<p class="hint" style="margin:0">No weigh-ins yet. Add today\'s weight above.</p>';
+    if(ks.length>1){ const ch=weights[ks[0]]-weights[ks[ks.length-1]];
+      $("wSummary").textContent="Latest "+weights[ks[0]].toFixed(1)+" kg · "+(ch<=0?"down ":"up ")+Math.abs(ch).toFixed(1)+" kg since your first weigh-in."; }
+    else $("wSummary").textContent = ks.length ? "Latest "+weights[ks[0]].toFixed(1)+" kg." : "";
+    if(ks.length && !$("cW").value) $("cW").value=weights[ks[0]];
+  }
+  $("wForm").addEventListener("submit", async ev=>{
+    ev.preventDefault();
+    const k=$("wDate").value, kg=Number($("wKg").value);
+    if(!k || !(kg>=20 && kg<=400)){ status("Enter a weight between 20 and 400 kg.", true); return; }
+    weights[k]=Math.round(kg*10)/10; $("wKg").value=""; render(); status("Saved weight "+weights[k].toFixed(1)+" kg.");
+    lsSave(); if(col){ try{ await col.doc("w-"+k).set({kg:weights[k]}); }catch(e){ status("Couldn't save to your account; kept in this browser.", true); } }
+  });
+  $("wList").addEventListener("click", async ev=>{
+    const b=ev.target.closest("button[data-w]"); if(!b) return;
+    const k=b.dataset.w; delete weights[k]; render(); status("Removed weight for "+k+".");
+    lsSave(); if(col){ try{ await col.doc("w-"+k).delete(); }catch(e){} }
+  });
+
+  function drawChart(list, avg, kpk, n){
+    const W=600,H=210,L=46,R=14,T=14,B=28, el=$("chart");
+    // cumulative weight change (kg, negative = loss); unlogged days use the average
+    const pts=[{x:0,y:0,est:false}]; let cum=0;
+    list.forEach((r,i)=>{ const def = r.e ? r.def : (n?avg:0); cum+=def; pts.push({x:i+1,y:-cum/kpk,est:!r.e,logged:!!r.e}); });
+    const ys=pts.map(p=>p.y); let lo=Math.min(0,...ys), hi=Math.max(0,...ys);
+    if(hi-lo<0.2){ const m=(hi+lo)/2; lo=Math.min(0,m-0.1); hi=Math.max(0,m+0.1); }
+    const step = (hi-lo)>2?0.5:(hi-lo)>0.8?0.2:0.1;
+    lo=Math.floor(lo/step)*step; hi=Math.ceil(hi/step)*step;
+    const sx=x=>L+x*(W-L-R)/7, sy=y=>T+(hi-y)*(H-T-B)/(hi-lo);
+    let s='<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg">';
+    for(let v=lo; v<=hi+1e-9; v+=step){ const y=sy(v), z=Math.abs(v)<1e-9;
+      s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y+'" y2="'+y+'" stroke="var(--line)" stroke-width="'+(z?1.5:1)+'"'+(z?'':' stroke-dasharray="2 4"')+'/>';
+      s+='<text x="'+(L-8)+'" y="'+(y+4)+'" text-anchor="end">'+(v>0?'+':'')+v.toFixed(1)+'</text>'; }
+    s+='<text x="'+sx(0)+'" y="'+(H-8)+'" text-anchor="middle">start</text>';
+    DAYN.forEach((d,i)=>{ s+='<text x="'+sx(i+1)+'" y="'+(H-8)+'" text-anchor="middle">'+d+'</text>'; });
+    if(n){
+      // area under logged path
+      for(let i=1;i<pts.length;i++){ const a=pts[i-1], b=pts[i];
+        const col = b.y<=0 ? 'var(--accent)' : 'var(--surplus)';
+        s+='<line x1="'+sx(a.x)+'" y1="'+sy(a.y)+'" x2="'+sx(b.x)+'" y2="'+sy(b.y)+'" stroke="'+col+'" stroke-width="2.5" stroke-linecap="round"'+(b.est?' stroke-dasharray="5 5" opacity=".7"':'')+'/>'; }
+      pts.forEach((p,i)=>{ if(!i) return; const col=p.y<=0?'var(--accent)':'var(--surplus)';
+        s+='<circle cx="'+sx(p.x)+'" cy="'+sy(p.y)+'" r="'+(p.logged?4:3)+'" fill="'+(p.logged?col:'var(--surface)')+'" stroke="'+col+'" stroke-width="2"><title>'+DAYN[i-1]+': '+(p.y>0?'+':'')+p.y.toFixed(2)+' kg'+(p.est?' (estimated)':'')+'</title></circle>'; });
+      const e=pts[7]; s+='<text x="'+(sx(7)-8)+'" y="'+(sy(e.y)+(e.y<=0?18:-10))+'" text-anchor="end" style="font-weight:600;fill:var(--fg)">'+(e.y>0?'+':'')+e.y.toFixed(2)+' kg</text>';
+    } else {
+      s+='<text x="'+(L+(W-L-R)/2)+'" y="'+(T+(H-T-B)/2)+'" text-anchor="middle">Log a day to see your week take shape</text>';
+    }
+    el.innerHTML=s+'</svg>';
+  }
+
+  function status(t,warn){ const s=$("status"); s.textContent=t; s.style.color=warn?"var(--surplus)":""; clearTimeout(status.t); status.t=setTimeout(()=>s.textContent="",3000); }
+  async function persistDay(k){
+    lsSave(); if(!col) return;
+    try{ if(days[k]) await col.doc(k).set(days[k]); else await col.doc(k).delete(); }
+    catch(e){ status("Couldn't save to your account; kept in this browser.", true); }
+  }
+  async function persistSettings(){
+    lsSave();
+    if(col){ try{ await col.doc("settings").set({bmr:Number(settings.bmr)||0,kpk:Number(settings.kpk)||7700,mode:settings.mode}); }catch(e){} }
+  }
+
+  $("logForm").addEventListener("submit", async ev=>{
+    ev.preventDefault();
+    const k=$("fDate").value, burnt=Number($("fOut").value);
+    let intake, items=null;
+    if(tab==="foods"){ intake=foodTotal(); items=Object.entries(picked).map(([name,p])=>({name,kcal:p.kcal,qty:p.qty})); }
+    else intake=Number($("fIn").value);
+    if(!k){ return; }
+    if(!(burnt>=0) || $("fOut").value===""){ status("Enter calories burnt.", true); return; }
+    if(!(intake>0)){ status(tab==="foods"?"Pick at least one food.":"Enter your total intake.", true); return; }
+    days[k]= items ? {intake,burnt,items} : {intake,burnt};
+    const d=new Date(k+"T00:00:00"), md=new Date(d); md.setDate(md.getDate()-((d.getDay()+6)%7));
+    weekOffset=Math.min(0,Math.round((md-monday(0))/(7*864e5)));
+    render(); status("Saved "+DAYN[(d.getDay()+6)%7]+" "+d.getDate()+" "+MON[d.getMonth()]+": "+fmt(intake)+" kcal eaten.");
+    location.hash="week";
+    await persistDay(k);
+  });
+  $("clearForm").onclick=()=>{ picked={}; $("fIn").value=""; $("fOut").value=""; renderFoods(); };
+  $("ledger").addEventListener("click", async ev=>{
+    const t=ev.target.closest("[data-k],[data-edit]"); if(!t) return;
+    if(t.dataset.k){ const k=t.dataset.k; delete days[k]; render(); status("Removed "+k+"."); await persistDay(k); }
+    else { loadIntoForm(t.dataset.edit); location.hash="log"; }
+  });
+  $("ledger").addEventListener("keydown",ev=>{ if((ev.key==="Enter"||ev.key===" ") && ev.target.dataset.edit){ ev.preventDefault(); ev.target.click(); }});
+  $("fDate").addEventListener("change",()=>{ if(days[$("fDate").value]) loadIntoForm($("fDate").value); });
+  $("prev").onclick=()=>{weekOffset--;render();};
+  $("next").onclick=()=>{if(weekOffset<0){weekOffset++;render();}};
+  document.querySelectorAll('input[name="mode"]').forEach(r=>r.addEventListener("change",()=>{ settings.mode=r.value; render(); persistSettings(); }));
+  $("fBmr").addEventListener("change",()=>{settings.bmr=Number($("fBmr").value)||0;render();persistSettings();});
+  $("fKpk").addEventListener("change",()=>{settings.kpk=Number($("fKpk").value)||7700;render();persistSettings();});
+  $("cGo").addEventListener("click",()=>{
+    const w=Number($("cW").value),h=Number($("cH").value),a=Number($("cA").value);
+    if(!(w>0&&h>0&&a>0)){ $("cOut").textContent="Fill in weight, height and age."; return; }
+    const bmr=10*w+6.25*h-5*a+($("cS").value==="m"?5:-161);
+    settings.bmr=Math.round(bmr*1.2); $("fBmr").value=settings.bmr;
+    $("cOut").textContent="Set to "+fmt(settings.bmr)+" kcal/day.";
+    render(); persistSettings();
+  });
+
+  function route(){
+    const v = location.hash==="#log" ? "log" : location.hash==="#profile" ? "profile" : "week";
+    document.querySelectorAll("[data-view]").forEach(s=>{ s.hidden = s.dataset.view!==v; });
+    $("weekNav").hidden = v!=="week";
+    $("navWeek").setAttribute("aria-current", v==="week"?"page":"false");
+    $("navLog").setAttribute("aria-current", v==="log"?"page":"false");
+    $("navProf").setAttribute("aria-current", v==="profile"?"page":"false");
+    window.scrollTo(0,0);
+  }
+  window.addEventListener("hashchange", route);
+
+  // start
+  route();
+  lsLoad();
+  if(!settings.mode) settings.mode="exercise";
+  $("fDate").value=iso(new Date()); $("wDate").value=iso(new Date());
+  $("fBmr").value=settings.bmr||""; $("fKpk").value=settings.kpk||7700;
+  renderFoods(); render();
+
+  (async()=>{
+    try{
+      if(!window.claude || !window.claude.use) return;
+      const [db,user]=await Promise.all([window.claude.use("db"),window.claude.use("user")]);
+      if(!db||!user) return;
+      const id=await user.id(); if(!id) return;
+      col=db.collection("data/users/"+id);
+      const snap=await col.get();
+      const remote={}, remoteW={};
+      snap.docs.forEach(doc=>{ const v=doc.data(); if(!v) return;
+        if(doc.id==="settings"){ settings=Object.assign(settings,v); }
+        else if(/^w-\d{4}-\d{2}-\d{2}$/.test(doc.id)){ if(Number(v.kg)>0) remoteW[doc.id.slice(2)]=Number(v.kg); }
+        else if(/^\d{4}-\d{2}-\d{2}$/.test(doc.id)){ const e={intake:Number(v.intake)||0,burnt:Number(v.burnt)||0}; if(Array.isArray(v.items)) e.items=v.items; remote[doc.id]=e; } });
+      for(const k in days){ if(!remote[k]){ remote[k]=days[k]; try{ await col.doc(k).set(days[k]); }catch(e){} } }
+      for(const k in weights){ if(!(k in remoteW)){ remoteW[k]=weights[k]; try{ await col.doc("w-"+k).set({kg:weights[k]}); }catch(e){} } }
+      days=remote; weights=remoteW; lsSave();
+      $("fBmr").value=settings.bmr||""; $("fKpk").value=settings.kpk||7700;
+      render();
+    }catch(e){ col=null; render(); }
+  })();
+})();
+</script>
+
+</body>
+</html>
