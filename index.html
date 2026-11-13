@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="description" content="Log daily calories eaten and burnt, pick Indian meals, and see your weekly deficit and expected weight loss by Sunday.">
+<meta name="description" content="Log daily calories eaten and burnt, pick Indian meals, and see your weekly deficit, expected weight loss and days to your target weight.">
 <style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>Kcal Ledger</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -114,6 +114,12 @@ input,select{font:inherit;font-size:1rem;color:var(--fg);background:var(--bg);bo
 .views a{text-decoration:none;font-weight:700;padding:8px 14px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--fg)}
 .views a[aria-current="page"]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
 .views .status{margin:0 0 0 4px}
+.tgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}
+.tcard{border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--bg);min-width:0}
+.mid{font-family:var(--font-display);font-weight:800;font-size:2.2rem;line-height:1.05;letter-spacing:-.02em;color:var(--accent)}
+.mid small{font-size:1rem;font-weight:600;margin-left:4px}
+.mid.off{color:var(--surplus);font-size:1.3rem}
+@media (max-width:520px){.tgrid{grid-template-columns:1fr}}
 .wrow{display:grid;grid-template-columns:1fr auto auto 34px;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
 .wrow:last-child{border-bottom:0}
 .wrow .chg{font-size:.85rem;color:var(--muted);min-width:64px;text-align:right}
@@ -160,6 +166,28 @@ details.calc summary{cursor:pointer;font-weight:600}
     <div class="chartbox">
       <div class="chart" id="chart" role="img" aria-label="Weight change through the week"></div>
       <div class="legend"><span class="lk1">Logged days</span><span class="lk2">Estimated (your average)</span></div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="tH" data-view="week">
+    <div class="block-h"><h2 id="tH">Road to target</h2><span class="badge" id="tUpd"></span></div>
+    <div id="tEmpty" class="hint"></div>
+    <div id="tBody" class="tgrid" hidden>
+      <div class="tcard">
+        <div class="eyebrow">At your current pace</div>
+        <div class="mid num" id="tPace">–</div>
+        <p class="hint" id="tPaceNote" style="margin-top:6px"></p>
+      </div>
+      <div class="tcard">
+        <div class="eyebrow" id="tPlanH">If you eat 2,000 kcal a day</div>
+        <div class="mid num" id="tPlan">–</div>
+        <p class="hint" id="tPlanNote" style="margin-top:6px"></p>
+      </div>
+      <div class="stats" style="grid-column:1/-1">
+        <div class="stat"><span>Current weight → target</span><span class="num" id="tW">–</span></div>
+        <div class="stat"><span>Average activity burn</span><span class="num" id="tBurn">–</span></div>
+        <div class="stat"><span>Average daily deficit</span><span class="num" id="tDef">–</span></div>
+      </div>
     </div>
   </section>
 
@@ -226,6 +254,16 @@ details.calc summary{cursor:pointer;font-weight:600}
     <p class="hint" id="wSummary"></p>
     <div class="ledger" id="wList" style="margin-top:6px"></div>
     <p class="hint">Weigh yourself at the same time of day, ideally in the morning. Daily weight can swing by 0.5–1 kg from water alone, so watch the trend.</p>
+  </section>
+
+  <section class="panel" aria-labelledby="gH" data-view="profile" hidden>
+    <h2 id="gH">Target weight</h2>
+    <div class="grid2" style="margin-top:12px">
+      <label for="gKg">Target weight (kg)<input type="number" id="gKg" min="20" max="400" step="0.1" inputmode="decimal" placeholder="e.g. 70"></label>
+      <label for="gPlan">Planned daily intake (kcal)<input type="number" id="gPlan" min="500" step="50" inputmode="numeric" placeholder="2000"></label>
+    </div>
+    <p class="hint" id="gNote"></p>
+    <p class="hint">My week shows how many days it will take to reach this weight. That estimate uses your weigh-ins and the last 14 days of logs, and it refreshes every 3 days so day-to-day swings don't keep moving it. Changing your target or planned intake refreshes it straight away.</p>
   </section>
 
   <section class="panel" aria-labelledby="sH" data-view="profile" hidden>
@@ -386,6 +424,7 @@ details.calc summary{cursor:pointer;font-weight:600}
       $("sW").textContent = (weights[wk]-after/kpk).toFixed(1)+" kg";
     } else $("sW").textContent = wk ? weights[wk].toFixed(1)+" kg" : "add weight";
     renderWeights();
+    renderTarget();
     // burn mode UI
     const ex = settings.mode!=="total", bmr=Number(settings.bmr)||0;
     $("mEx").checked=ex; $("mTot").checked=!ex;
@@ -398,6 +437,63 @@ details.calc summary{cursor:pointer;font-weight:600}
     $("saveMode").textContent = col ? "Saved to your account" : "Saved in this browser";
     $("saveMode").className = "badge";
   }
+
+  /* ---------- target ---------- */
+  const dayMs=864e5;
+  const daysBetween=(a,b)=>Math.round((new Date(b+"T00:00:00")-new Date(a+"T00:00:00"))/dayMs);
+  const addDays=(k,n)=>{ const d=new Date(k+"T00:00:00"); d.setDate(d.getDate()+n); return d; };
+  const nice=d=>d.getDate()+" "+MON[d.getMonth()];
+  function computeTarget(){
+    const today=iso(new Date()), from=iso(addDays(today,-13));
+    const wk=Object.keys(weights).filter(k=>k<=today).sort().pop();
+    const t=Number(settings.target)||0, plan=Number(settings.plan)||2000, kpk=Number(settings.kpk)||7700;
+    const keys=Object.keys(days).filter(k=>k>=from && k<=today);
+    let burn=0, def=0; keys.forEach(k=>{ burn+=days[k].burnt+restAdd(); def+=deficit(days[k]); });
+    const n=keys.length, w=wk?weights[wk]:null;
+    const s={on:today, t, plan, w, n, avgBurn:n?burn/n:null, avgDef:n?def/n:null, paceDays:null, planDays:null};
+    if(w && t && n){
+      const kcal=(w-t)*kpk;
+      if(s.avgDef>0) s.paceDays=Math.ceil(kcal/s.avgDef);
+      if(s.avgBurn-plan>0) s.planDays=Math.ceil(kcal/(s.avgBurn-plan));
+    }
+    return s;
+  }
+  function renderTarget(){
+    const today=iso(new Date()), t=Number(settings.target)||0, plan=Number(settings.plan)||2000;
+    let s=settings.snap;
+    const stale = !s || daysBetween(s.on,today)>=3 || s.t!==t || s.plan!==plan || (!s.n && Object.keys(days).length) || (!s.w && Object.keys(weights).length);
+    if(stale){ s=computeTarget(); settings.snap=s; persistSettings(); }
+    $("tPlanH").textContent="If you eat "+fmt(plan)+" kcal a day";
+    $("gNote").textContent = t && s.w ? (s.w>t ? "You have "+(s.w-t).toFixed(1)+" kg to go from your latest weigh-in of "+s.w.toFixed(1)+" kg." : "Your latest weigh-in is already at or below this target.") : "";
+    let msg="";
+    if(!t) msg="Set a target weight on the Weight & settings page to see how long it will take.";
+    else if(!s.w) msg="Add your current weight on the Weight & settings page.";
+    else if(!s.n) msg="Log at least one day to estimate how long it will take.";
+    $("tEmpty").textContent=msg; $("tEmpty").hidden=!msg; $("tBody").hidden=!!msg;
+    const next=addDays(s.on,3);
+    $("tUpd").textContent = msg ? "" : "Updated "+nice(new Date(s.on+"T00:00:00"))+" · next "+nice(next);
+    $("tUpd").hidden=!!msg;
+    if(msg) return;
+    $("tW").textContent=s.w.toFixed(1)+" → "+t.toFixed(1)+" kg";
+    const rest=Number(settings.bmr)||0;
+    $("tBurn").textContent = rest ? fmt(Math.max(0,s.avgBurn-rest))+" kcal / day" : (settings.mode==="total" ? "set resting burn" : fmt(s.avgBurn)+" kcal / day");
+    $("tDef").textContent=(s.avgDef>=0?"":"+")+fmt(Math.abs(s.avgDef))+" kcal"+(s.avgDef<0?" surplus":"");
+    const basis="Based on "+s.n+" logged day"+(s.n>1?"s":"")+" in the last 14.";
+    function show(el,noteEl,dd,okNote,badNote){
+      if(s.w<=t){ el.className="mid num"; el.textContent="Reached"; noteEl.textContent="Your latest weigh-in is at or below your target."; return; }
+      if(dd==null){ el.className="mid num off"; el.textContent="Not getting closer"; noteEl.textContent=badNote; return; }
+      el.className="mid num"; el.innerHTML=fmt(dd)+"<small>days</small>";
+      noteEl.textContent="Around "+nice(addDays(s.on,dd))+" "+addDays(s.on,dd).getFullYear()+". "+okNote;
+    }
+    show($("tPace"),$("tPaceNote"),s.paceDays,basis,(s.avgDef<0?"Your average is a surplus, so at this pace your weight goes up, not down.":"You're eating about what you burn, so at this pace your weight stays the same."));
+    show($("tPlan"),$("tPlanNote"),s.planDays,"A deficit of "+fmt(s.avgBurn-plan)+" kcal a day against your average burn of "+fmt(s.avgBurn)+".","Your average burn of "+fmt(s.avgBurn)+" kcal is not more than "+fmt(plan)+", so this intake won't reduce weight.");
+  }
+  function targetInput(){
+    settings.target=Number($("gKg").value)||0; settings.plan=Number($("gPlan").value)||2000;
+    render(); persistSettings();
+  }
+  $("gKg").addEventListener("change",targetInput);
+  $("gPlan").addEventListener("change",targetInput);
 
   function renderWeights(){
     const ks=Object.keys(weights).sort().reverse();
@@ -465,7 +561,7 @@ details.calc summary{cursor:pointer;font-weight:600}
   }
   async function persistSettings(){
     lsSave();
-    if(col){ try{ await col.doc("settings").set({bmr:Number(settings.bmr)||0,kpk:Number(settings.kpk)||7700,mode:settings.mode}); }catch(e){} }
+    if(col){ try{ await col.doc("settings").set({bmr:Number(settings.bmr)||0,kpk:Number(settings.kpk)||7700,mode:settings.mode,target:Number(settings.target)||0,plan:Number(settings.plan)||2000,snap:settings.snap||null}); }catch(e){} }
   }
 
   $("logForm").addEventListener("submit", async ev=>{
@@ -523,6 +619,7 @@ details.calc summary{cursor:pointer;font-weight:600}
   if(!settings.mode) settings.mode="exercise";
   $("fDate").value=iso(new Date()); $("wDate").value=iso(new Date());
   $("fBmr").value=settings.bmr||""; $("fKpk").value=settings.kpk||7700;
+  $("gKg").value=settings.target||""; $("gPlan").value=settings.plan||2000;
   renderFoods(); render();
 
   (async()=>{
@@ -542,6 +639,7 @@ details.calc summary{cursor:pointer;font-weight:600}
       for(const k in weights){ if(!(k in remoteW)){ remoteW[k]=weights[k]; try{ await col.doc("w-"+k).set({kg:weights[k]}); }catch(e){} } }
       days=remote; weights=remoteW; lsSave();
       $("fBmr").value=settings.bmr||""; $("fKpk").value=settings.kpk||7700;
+      $("gKg").value=settings.target||""; $("gPlan").value=settings.plan||2000;
       render();
     }catch(e){ col=null; render(); }
   })();
