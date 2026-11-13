@@ -120,7 +120,9 @@ input,select{font:inherit;font-size:1rem;color:var(--fg);background:var(--bg);bo
 .mid small{font-size:1rem;font-weight:600;margin-left:4px}
 .mid.off{color:var(--surplus);font-size:1.3rem}
 @media (max-width:520px){.tgrid{grid-template-columns:1fr}}
-.wrow{display:grid;grid-template-columns:1fr auto auto 34px;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.wrow.head{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;padding:4px 0}
+.wrow .exp{font-size:.85rem;color:var(--muted);min-width:64px;text-align:right}
+.wrow{display:grid;grid-template-columns:1fr auto auto auto 34px;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
 .wrow:last-child{border-bottom:0}
 .wrow .chg{font-size:.85rem;color:var(--muted);min-width:64px;text-align:right}
 .back{color:var(--accent);font-weight:600;text-decoration:none;font-size:.9rem}
@@ -162,6 +164,7 @@ details.calc summary{cursor:pointer;font-weight:600}
       <div class="stat"><span>Avg daily deficit</span><span class="num" id="sAvg">–</span></div>
       <div class="stat"><span>Days logged</span><span class="num" id="sDays">–</span></div>
       <div class="stat"><span>Weight by Sunday</span><span class="num" id="sW">–</span></div>
+      <div class="stat"><span>Next weigh-in</span><a class="num" id="sNext" href="#profile" style="text-decoration:none;font-weight:600">–</a></div>
     </div>
     <div class="chartbox">
       <div class="chart" id="chart" role="img" aria-label="Weight change through the week"></div>
@@ -245,15 +248,16 @@ details.calc summary{cursor:pointer;font-weight:600}
   </section>
 
   <section class="panel" aria-labelledby="wH" data-view="profile" hidden>
-    <h2 id="wH">Current weight</h2>
+    <div class="block-h"><h2 id="wH">Weekly weigh-in</h2><span class="badge">Every Saturday</span></div>
+    <p class="hint" id="wDue"></p>
     <form id="wForm" class="grid2" style="margin-top:12px">
-      <label for="wDate">Date<input type="date" id="wDate" required></label>
+      <label for="wDate">Saturday<select id="wDate" required></select></label>
       <label for="wKg">Weight (kg)<input type="number" id="wKg" min="20" max="400" step="0.1" inputmode="decimal" placeholder="e.g. 78.4" required></label>
       <button class="primary" type="submit">Save weight</button>
     </form>
     <p class="hint" id="wSummary"></p>
     <div class="ledger" id="wList" style="margin-top:6px"></div>
-    <p class="hint">Weigh yourself at the same time of day, ideally in the morning. Daily weight can swing by 0.5–1 kg from water alone, so watch the trend.</p>
+    <p class="hint">Weigh yourself once a week, every Saturday morning after the bathroom and before eating. Each row compares the real change with what your logged calories predicted for that Saturday-to-Saturday week. Weight can swing 0.5–1 kg from water alone, so look at the trend over a few weeks.</p>
   </section>
 
   <section class="panel" aria-labelledby="gH" data-view="profile" hidden>
@@ -495,16 +499,44 @@ details.calc summary{cursor:pointer;font-weight:600}
   $("gKg").addEventListener("change",targetInput);
   $("gPlan").addEventListener("change",targetInput);
 
-  function renderWeights(){
-    const ks=Object.keys(weights).sort().reverse();
+  // Saturday on or before a date
+  function lastSat(k){ const d=new Date(k+"T00:00:00"); d.setDate(d.getDate()-((d.getDay()+1)%7)); return iso(d); }
+  function fillSats(){
+    const sel=$("wDate"), keep=sel.value, today=iso(new Date()), ls=lastSat(today);
     let h="";
-    ks.slice(0,10).forEach((k,i)=>{
+    for(let i=0;i<12;i++){ const k=iso(addDays(ls,-7*i));
+      h+='<option value="'+k+'">Sat '+nice(new Date(k+"T00:00:00"))+(k===today?' (today)':'')+(weights[k]?' · '+weights[k].toFixed(1)+' kg':'')+'</option>'; }
+    sel.innerHTML=h;
+    if(keep && sel.querySelector('option[value="'+keep+'"]')) sel.value=keep;
+    else { // first Saturday without a weigh-in, else the latest
+      const open=[...sel.options].find(o=>!weights[o.value]); sel.value = (open && open.value===ls) ? ls : ls; }
+  }
+  function weighInStatus(){
+    const today=iso(new Date()), ls=lastSat(today), el=$("sNext");
+    let txt, warn=false;
+    if(weights[ls]){ const nx=addDays(ls,7), dd=daysBetween(today,iso(nx)); txt="Sat "+nice(nx)+" (in "+dd+" day"+(dd>1?"s":"")+")"; }
+    else if(ls===today){ txt="Due today"; warn=true; }
+    else { txt="Missed Sat "+nice(new Date(ls+"T00:00:00"))+" · add it"; warn=true; }
+    el.textContent=txt; el.style.color = warn ? "var(--surplus)" : "var(--accent)";
+    $("wDue").textContent = weights[ls] ? "This week's weigh-in is done. Next one: "+txt+"." : (ls===today ? "Today is weigh-in day." : "You haven't added Saturday "+nice(new Date(ls+"T00:00:00"))+"'s weight yet. You can still add it below.");
+    $("wDue").className = "hint"+(warn?" warn":"");
+  }
+  function renderWeights(){
+    const ks=Object.keys(weights).sort().reverse(), kpk=Number(settings.kpk)||7700;
+    let h="";
+    ks.slice(0,12).forEach((k,i)=>{
       const prev=ks[i+1], d=new Date(k+"T00:00:00"), diff=prev!==undefined?weights[k]-weights[prev]:null;
-      h+='<div class="wrow"><span>'+DAYN[(d.getDay()+6)%7]+' '+d.getDate()+' '+MON[d.getMonth()]+' '+d.getFullYear()+'</span>'+
-        '<span class="chg num" style="color:'+(diff===null?'':diff<=0?'var(--accent)':'var(--surplus)')+'">'+(diff===null?'':(diff>0?'+':'')+diff.toFixed(1))+'</span>'+
+      // expected change from logged days between the two weigh-ins (weigh-in morning to next weigh-in morning)
+      let exp=null, nlog=0;
+      if(prev!==undefined){ let s=0; for(const dk in days){ if(dk>=prev && dk<k){ s+=deficit(days[dk]); nlog++; } } if(nlog) exp=-s/kpk; }
+      h+='<div class="wrow"><span title="'+d.getFullYear()+'">'+DAYN[(d.getDay()+6)%7]+' '+d.getDate()+' '+MON[d.getMonth()]+'</span>'+
+        '<span class="exp num" title="'+(exp===null?'':'From '+nlog+' logged day'+(nlog>1?'s':''))+'">'+(exp===null?'–':(exp>0?'+':'')+exp.toFixed(1))+'</span>'+
+        '<span class="chg num" style="color:'+(diff===null?'':diff<=0?'var(--accent)':'var(--surplus)')+'">'+(diff===null?'–':(diff>0?'+':'')+diff.toFixed(1))+'</span>'+
         '<b class="num">'+weights[k].toFixed(1)+' kg</b><button class="del" data-w="'+k+'" aria-label="Delete weight for '+k+'">✕</button></div>';
     });
-    $("wList").innerHTML = h || '<p class="hint" style="margin:0">No weigh-ins yet. Add today\'s weight above.</p>';
+    if(h) h='<div class="wrow head"><span>Weigh-in</span><span class="exp">Expected</span><span class="chg">Actual</span><span>Weight</span><span></span></div>'+h;
+    $("wList").innerHTML = h || '<p class="hint" style="margin:0">No weigh-ins yet. Add this Saturday\'s weight above.</p>';
+    fillSats(); weighInStatus();
     if(ks.length>1){ const ch=weights[ks[0]]-weights[ks[ks.length-1]];
       $("wSummary").textContent="Latest "+weights[ks[0]].toFixed(1)+" kg · "+(ch<=0?"down ":"up ")+Math.abs(ch).toFixed(1)+" kg since your first weigh-in."; }
     else $("wSummary").textContent = ks.length ? "Latest "+weights[ks[0]].toFixed(1)+" kg." : "";
@@ -617,7 +649,7 @@ details.calc summary{cursor:pointer;font-weight:600}
   route();
   lsLoad();
   if(!settings.mode) settings.mode="exercise";
-  $("fDate").value=iso(new Date()); $("wDate").value=iso(new Date());
+  $("fDate").value=iso(new Date());
   $("fBmr").value=settings.bmr||""; $("fKpk").value=settings.kpk||7700;
   $("gKg").value=settings.target||""; $("gPlan").value=settings.plan||2000;
   renderFoods(); render();
