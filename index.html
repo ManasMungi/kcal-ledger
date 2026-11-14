@@ -163,7 +163,7 @@ details.calc summary{cursor:pointer;font-weight:600}
       <div class="stat"><span>Lost so far</span><span class="num" id="sKg">–</span></div>
       <div class="stat"><span>Avg daily deficit</span><span class="num" id="sAvg">–</span></div>
       <div class="stat"><span>Days logged</span><span class="num" id="sDays">–</span></div>
-      <div class="stat"><span>Weight by Sunday</span><span class="num" id="sW">–</span></div>
+      <div class="stat"><span>Weight by Saturday</span><span class="num" id="sW">–</span></div>
       <div class="stat"><span>Next weigh-in</span><a class="num" id="sNext" href="#profile" style="text-decoration:none;font-weight:600">–</a></div>
     </div>
     <div class="chartbox">
@@ -173,7 +173,7 @@ details.calc summary{cursor:pointer;font-weight:600}
   </section>
 
   <section class="panel" aria-labelledby="tH" data-view="week">
-    <div class="block-h"><h2 id="tH">Road to target</h2><span class="badge" id="tUpd"></span></div>
+    <div class="block-h"><h2 id="tH">Road to target</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="badge" id="tUpd"></span><button type="button" id="tRefresh" style="padding:5px 10px;font-size:.85rem;font-weight:600">↻ Refresh now</button></div></div>
     <div id="tEmpty" class="hint"></div>
     <div id="tBody" class="tgrid" hidden>
       <div class="tcard">
@@ -421,12 +421,17 @@ details.calc summary{cursor:pointer;font-weight:600}
     $("sAvg").textContent = n ? fmt(avg)+" kcal" : "–";
     $("sDays").textContent = n+" / 7";
     drawChart(list, avg, kpk, n);
-    // expected weight on Sunday: latest weigh-in up to Sunday, minus the deficit of the days after it
-    const wk = Object.keys(weights).filter(d=>d<=iso(end)).sort().pop();
-    if(wk && n){
-      let after=0; list.forEach(r=>{ if(r.k>wk) after += r.e ? r.def : avg; });
-      $("sW").textContent = (weights[wk]-after/kpk).toFixed(1)+" kg";
-    } else $("sW").textContent = wk ? weights[wk].toFixed(1)+" kg" : "add weight";
+    // expected weight at this week's Saturday weigh-in: latest earlier weigh-in minus the deficit of the days in between
+    const sat = iso(addDays(iso(start),5));
+    if(weights[sat]) $("sW").textContent = weights[sat].toFixed(1)+" kg (weighed)";
+    else {
+      const wk = Object.keys(weights).filter(d=>d<sat).sort().pop();
+      if(!wk) $("sW").textContent = "add weight";
+      else {
+        let s=0; for(let k=wk; k<sat; k=iso(addDays(k,1))) s += days[k] ? deficit(days[k]) : (n?avg:0);
+        $("sW").textContent = (weights[wk]-s/kpk).toFixed(1)+" kg";
+      }
+    }
     renderWeights();
     renderTarget();
     // burn mode UI
@@ -496,6 +501,7 @@ details.calc summary{cursor:pointer;font-weight:600}
     settings.target=Number($("gKg").value)||0; settings.plan=Number($("gPlan").value)||2000;
     render(); persistSettings();
   }
+  $("tRefresh").addEventListener("click",()=>{ settings.snap=computeTarget(); render(); persistSettings(); status("Road to target refreshed. Next automatic update in 3 days."); });
   $("gKg").addEventListener("change",targetInput);
   $("gPlan").addEventListener("change",targetInput);
 
